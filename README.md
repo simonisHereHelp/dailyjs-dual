@@ -10,6 +10,8 @@ This demo shows how to:
 - Control your camera and microphone devices
 - Select a new camera or microphone device
 - Leave a call and clean up
+## dual cam, combined stream
+ 960 x 640 x 2 camera views
 
 ## Prerequisites
 

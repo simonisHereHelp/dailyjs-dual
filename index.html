@@ -1,61 +1,88 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Daily Call Example</title>
-    <link href="style.css" rel="stylesheet" />
-  </head>
-  <body>
-    <div>
-      <h2>Dailyco JS</h2>
-      <label for="room-url">Room URL:</label>
-      <input
-        type="text"
-        id="room-url"
-        size="50"
-        placeholder="https://here2.daily.co/here2"
-      />
-    </div>
-    <div>
-      <label for="join-token">
-        <a
-          href="https://docs.daily.co/guides/configurations-and-settings/controlling-who-joins-a-meeting"
-          target="_blank"
-          >Meeting token:</a
-        >
-      </label>
-      <input type="text" id="join-token" size="50" placeholder="Optional" />
-    </div>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dual Camera Composite Stream Daily Video Call</title>
+</head>
+<body>
+  <h1>Composite Stream</h1>
 
-    <div class="controls">
-      <button id="join-btn">Join Room</button>
-      <button id="leave-btn" disabled>Leave</button>
-    </div>
+  <!-- Container for the composite video feed -->
+  <div>
+    <h2>960x640 x 2 Videos</h2>
+    <video id="videoContainer1" autoplay playsinline style="width: 100%; max-width: 1280px; height: auto; border: 1px solid #ccc;"></video>
+  </div>
 
-    <div class="controls">
-      <button id="toggle-camera" disabled="true">Toggle Camera</button>
-      <button id="toggle-mic" disabled="true">Toggle Microphone</button>
-    </div>
+  <script src="https://unpkg.com/@daily-co/daily-js"></script>
+  <script>
+    async function setupCompositeCameraView(roomUrl, username) {
+      // Create a single Daily call instance
+      const callInstance = Daily.createCallObject();
 
-    <div class="controls">
-      <select id="camera-selector">
-        <option value="" disabled selected>Select a camera</option>
-      </select>
-      <select id="mic-selector">
-        <option value="" disabled selected>Select a microphone</option>
-      </select>
-    </div>
+      // Enumerate available video devices
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter((device) => device.kind === "videoinput");
 
-    <div id="status">
-      <div id="camera-state">Camera: Off</div>
-      <div id="mic-state">Mic: Off</div>
-      <div id="participant-count">Participants: 0</div>
-      <div id="active-speaker">Active Speaker: None</div>
-    </div>
+      if (videoDevices.length < 2) {
+        console.warn("At least two video devices are required for this setup.");
+        return;
+      }
 
-    <div id="videos"></div>
+      // Capture both video streams from device 0 and device 1
+      const [stream1, stream2] = await Promise.all([
+        navigator.mediaDevices.getUserMedia({ video: { deviceId: videoDevices[0].deviceId } }),
+        navigator.mediaDevices.getUserMedia({ video: { deviceId: videoDevices[1].deviceId } })
+      ]);
 
-    <script src="https://unpkg.com/@daily-co/daily-js"></script>
-    <script src="index.js"></script>
-  </body>
+      // Create video elements for each stream to render them on a canvas
+      const video1 = document.createElement("video");
+      const video2 = document.createElement("video");
+      video1.srcObject = stream1;
+      video2.srcObject = stream2;
+      await Promise.all([video1.play(), video2.play()]);
+
+      // Create a canvas to combine both video feeds side-by-side
+      const canvas = document.createElement("canvas");
+      canvas.width = 960 * 2;  // Double width for side-by-side view
+      canvas.height = 640;      // Same height for both videos
+      const ctx = canvas.getContext("2d");
+
+      // Draw both videos on the canvas side-by-side
+      const drawFrame = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video1, 0, 0, canvas.width / 2, canvas.height);           // Draw first video on the left
+        ctx.drawImage(video2, canvas.width / 2, 0, canvas.width / 2, canvas.height); // Draw second video on the right
+        requestAnimationFrame(drawFrame);
+      };
+      drawFrame();
+
+      // Capture the combined canvas stream
+      const combinedStream = canvas.captureStream(30); // 30 FPS
+
+      // Set the combined stream as the video source for the call
+      await callInstance.setInputDevicesAsync({ videoSource: combinedStream.getVideoTracks()[0] });
+
+      // Join the room
+      try {
+        await callInstance.join({
+          url: roomUrl,
+          userName: username
+        });
+
+        // Attach the combined video feed to the video element
+        const videoContainer1 = document.getElementById("videoContainer1");
+        videoContainer1.srcObject = combinedStream;
+
+      } catch (error) {
+        console.error("Error joining room:", error);
+      }
+    }
+
+    // Run the setup with your Daily room URL and username
+    const roomUrl = "https://here2.daily.co/here2"; // Replace with your actual Daily room URL
+    const username = "Composite Camera User"; // Replace with your desired username
+    setupCompositeCameraView(roomUrl, username);
+  </script>
+</body>
 </html>
